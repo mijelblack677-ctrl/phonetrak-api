@@ -1,6 +1,9 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 from app.config import get_settings
+import logging
+
+logger = logging.getLogger(__name__)
 
 settings = get_settings()
 
@@ -16,4 +19,9 @@ def get_db():
         db.close()
 
 def init_db():
-    Base.metadata.create_all(bind=engine)
+    try:
+        Base.metadata.create_all(bind=engine)
+        logger.info("Database tables created successfully")
+    except Exception as e:
+        logger.error(f"Failed to create tables: {e}", exc_info=True)
+        raise
