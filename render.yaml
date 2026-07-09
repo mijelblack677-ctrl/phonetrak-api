@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: phonetrak-api
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: phonetrak-db
+          property: connectionString
+
+databases:
+  - name: phonetrak-db
+    databaseName: phonetrak_db
+    plan: free
