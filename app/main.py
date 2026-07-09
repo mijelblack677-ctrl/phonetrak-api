@@ -70,3 +70,14 @@ async def ws_post_command(request: Request):
     body = await request.json()
     result = await handle_http_request("POST", "/ws/command", body)
     return result
+
+from fastapi.responses import HTMLResponse
+import os
+
+@app.get("/dashboard", response_class=HTMLResponse)
+async def dashboard():
+    dashboard_path = os.path.join(os.path.dirname(__file__), "..", "static", "dashboard.html")
+    if os.path.exists(dashboard_path):
+        with open(dashboard_path) as f:
+            return f.read()
+    return "<h1>Dashboard not found</h1>"
