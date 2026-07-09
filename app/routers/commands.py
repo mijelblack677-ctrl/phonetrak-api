@@ -82,3 +82,25 @@ async def command_result(command_id: str, result: dict, db: Session = Depends(ge
     db.commit()
     
     return {"status": "ok"}
+
+@router.get("/pending/{device_id}")
+async def get_pending_commands(device_id: str, db: Session = Depends(get_db)):
+    """Guardian polls this to get pending commands"""
+    commands = db.query(Command).filter(
+        Command.device_id == device_id,
+        Command.status == "pending"
+    ).all()
+    
+    result = []
+    for cmd in commands:
+        result.append({
+            "id": cmd.id,
+            "command_type": cmd.command_type,
+            "command_data": cmd.command_data
+        })
+        cmd.status = "sent"
+    
+    if commands:
+        db.commit()
+    
+    return {"commands": result}
