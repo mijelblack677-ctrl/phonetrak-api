@@ -11,7 +11,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# Configure bcrypt with shorter passwords
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__truncate_error=True)
 
 class RegisterRequest(BaseModel):
     email: str
@@ -26,6 +28,21 @@ def generate_recovery_code():
     chars = string.ascii_uppercase + string.digits
     return ''.join(secrets.choice(chars) for _ in range(12))
 
+def hash_password(password: str) -> str:
+    """Hash password, truncating to 72 bytes for bcrypt"""
+    # Ensure password is not too long for bcrypt
+    password_bytes = password.encode('utf-8')
+    if len(password_bytes) > 72:
+        password_bytes = password_bytes[:72]
+    return pwd_context.hash(password_bytes.decode('utf-8', errors='ignore'))
+
+def verify_password(password: str, hashed: str) -> bool:
+    """Verify password with truncation"""
+    password_bytes = password.encode('utf-8')
+    if len(password_bytes) > 72:
+        password_bytes = password_bytes[:72]
+    return pwd_context.verify(password_bytes.decode('utf-8', errors='ignore'), hashed)
+
 @router.post("/register")
 async def register(request: RegisterRequest, db: Session = Depends(get_db)):
     try:
@@ -37,7 +54,7 @@ async def register(request: RegisterRequest, db: Session = Depends(get_db)):
         
         user = User(
             email=request.email,
-            passphrase=pwd_context.hash(request.passphrase),
+            passphrase=hash_password(request.passphrase),
             tier=request.tier if request.tier in [t.value for t in Tier] else Tier.FREE.value,
             recovery_code=recovery
         )
@@ -65,7 +82,7 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
         if not user:
             raise HTTPException(status_code=401, detail="Invalid credentials")
         
-        if not pwd_context.verify(request.passphrase, user.passphrase):
+        if not verify_password(request.passphrase, user.passphrase):
             raise HTTPException(status_code=401, detail="Invalid credentials")
         
         return {
@@ -87,5 +104,4 @@ async def recover(email: str, recovery_code: str, db: Session = Depends(get_db))
     ).first()
     if not user:
         raise HTTPException(status_code=401, detail="Invalid recovery details")
-    
     return {"user_id": user.id, "tier": user.tier}
