@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from passlib.context import CryptContext
 from app.database import get_db
 from app.models.user import User, Tier
+import hashlib
 import secrets
 import string
 import logging
@@ -11,9 +11,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
-
-# Configure bcrypt with shorter passwords
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__truncate_error=True)
 
 class RegisterRequest(BaseModel):
     email: str
@@ -29,19 +26,18 @@ def generate_recovery_code():
     return ''.join(secrets.choice(chars) for _ in range(12))
 
 def hash_password(password: str) -> str:
-    """Hash password, truncating to 72 bytes for bcrypt"""
-    # Ensure password is not too long for bcrypt
-    password_bytes = password.encode('utf-8')
-    if len(password_bytes) > 72:
-        password_bytes = password_bytes[:72]
-    return pwd_context.hash(password_bytes.decode('utf-8', errors='ignore'))
+    """Hash password using SHA-256 with salt"""
+    salt = secrets.token_hex(16)
+    hashed = hashlib.sha256((password + salt).encode()).hexdigest()
+    return f"{salt}${hashed}"
 
-def verify_password(password: str, hashed: str) -> bool:
-    """Verify password with truncation"""
-    password_bytes = password.encode('utf-8')
-    if len(password_bytes) > 72:
-        password_bytes = password_bytes[:72]
-    return pwd_context.verify(password_bytes.decode('utf-8', errors='ignore'), hashed)
+def verify_password(password: str, stored: str) -> bool:
+    """Verify password against stored hash"""
+    try:
+        salt, hashed = stored.split("$")
+        return hashlib.sha256((password + salt).encode()).hexdigest() == hashed
+    except Exception:
+        return False
 
 @router.post("/register")
 async def register(request: RegisterRequest, db: Session = Depends(get_db)):
@@ -73,7 +69,7 @@ async def register(request: RegisterRequest, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Registration error: {e}", exc_info=True)
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/login")
 async def login(request: LoginRequest, db: Session = Depends(get_db)):
@@ -94,7 +90,7 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
         raise
     except Exception as e:
         logger.error(f"Login error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Login failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/recover")
 async def recover(email: str, recovery_code: str, db: Session = Depends(get_db)):
