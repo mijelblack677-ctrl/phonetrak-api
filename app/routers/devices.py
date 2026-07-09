@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
 from app.database import get_db
 from app.models.device import Device
-from app.models.user import User
+from app.models.command import Command
 
 router = APIRouter(prefix="/v1/devices", tags=["devices"])
 
@@ -23,8 +23,9 @@ class DeviceHeartbeat(BaseModel):
 
 @router.post("/heartbeat")
 async def heartbeat(request: DeviceHeartbeat, db: Session = Depends(get_db)):
-    """Guardian app sends heartbeat every 60 seconds"""
+    """Guardian app sends heartbeat - returns pending commands"""
     
+    # Find or create device
     device = db.query(Device).filter(
         Device.device_id == request.device_id,
         Device.user_id == request.user_id
@@ -37,7 +38,9 @@ async def heartbeat(request: DeviceHeartbeat, db: Session = Depends(get_db)):
             device_name="Android Device"
         )
         db.add(device)
+        db.flush()
     
+    # Update device status
     device.last_latitude = request.latitude
     device.last_longitude = request.longitude
     device.last_accuracy = request.accuracy
@@ -48,19 +51,33 @@ async def heartbeat(request: DeviceHeartbeat, db: Session = Depends(get_db)):
     device.phone_number = request.phone_number
     device.is_online = True
     device.last_seen = datetime.utcnow()
-    
     db.commit()
     
-    # Check for pending commands
-    from app.models.command import Command
-    pending = db.query(Command).filter(
+    # Get ALL pending commands for this device
+    pending_commands = db.query(Command).filter(
         Command.device_id == device.id,
         Command.status == "pending"
     ).all()
     
-    commands = [c.to_dict() for c in pending] if pending else []
+    commands_list = []
+    for cmd in pending_commands:
+        commands_list.append({
+            "id": cmd.id,
+            "command_type": cmd.command_type,
+            "command_data": cmd.command_data if isinstance(cmd.command_data, dict) else {}
+        })
+        # Mark as sent
+        cmd.status = "sent"
     
-    return {"status": "ok", "commands": commands}
+    if pending_commands:
+        db.commit()
+    
+    return {
+        "status": "ok",
+        "device_id": device.id,
+        "commands": commands_list,
+        "command_count": len(commands_list)
+    }
 
 @router.get("/{user_id}")
 async def get_devices(user_id: str, db: Session = Depends(get_db)):
